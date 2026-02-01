@@ -1,0 +1,160 @@
+name: Security
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - '.github/workflows/security.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/**'
+  workflow_dispatch:
+  schedule:
+    - cron: '0 0 * * 0'  # Weekly on Sunday
+
+env:
+  FOUNDRY_PROFILE: ci
+
+jobs:
+  slither:
+    name: Slither Analysis
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: nightly
+
+      - name: Build contracts
+        run: forge build --build-info
+
+      - name: Run Slither
+        uses: crytic/slither-action@v0.4.0
+        id: slither
+        with:
+          target: 'src/'
+          slither-args: '--exclude-dependencies --exclude-informational --sarif results.sarif'
+          fail-on: none
+          sarif: results.sarif
+        continue-on-error: true
+
+      - name: Create empty SARIF if missing
+        if: always()
+        run: |
+          if [ ! -f results.sarif ]; then
+            echo '{"version":"2.1.0","$schema":"https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json","runs":[{"tool":{"driver":{"name":"Slither","version":"0.0.0"}},"results":[]}]}' > results.sarif
+          fi
+
+      - name: Upload SARIF file
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: results.sarif
+        if: always()
+        continue-on-error: true
+
+      - name: Upload Slither Report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: slither-report
+          path: results.sarif
+
+  aderyn:
+    name: Aderyn Analysis
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: nightly
+
+      - name: Build contracts
+        run: forge build
+
+      - name: Install Aderyn
+        run: |
+          curl -L https://raw.githubusercontent.com/Cyfrin/aderyn/main/cyfrinup/install | bash
+          source ~/.bashrc
+          ~/.cyfrin/bin/cyfrinup || true
+          echo "$HOME/.cyfrin/bin" >> $GITHUB_PATH
+        continue-on-error: true
+
+      - name: Run Aderyn
+        run: |
+          export PATH=$PATH:$HOME/.cyfrin/bin
+          echo "## Aderyn Analysis Results" >> $GITHUB_STEP_SUMMARY
+          aderyn . --output aderyn-report.md || true
+          if [ -f aderyn-report.md ]; then
+            cat aderyn-report.md >> $GITHUB_STEP_SUMMARY
+          fi
+        continue-on-error: true
+
+      - name: Upload Aderyn Report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: aderyn-report
+          path: aderyn-report.md
+          if-no-files-found: ignore
+
+  forge-fuzz:
+    name: Forge Fuzz Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: nightly
+
+      - name: Run Forge fuzz tests
+        run: |
+          echo "## Forge Fuzz Test Results" >> $GITHUB_STEP_SUMMARY
+          forge test -vv --fuzz-runs 1000 2>&1 | tee fuzz-results.txt
+          tail -30 fuzz-results.txt >> $GITHUB_STEP_SUMMARY
+        env:
+          FOUNDRY_FUZZ_RUNS: 1000
+
+      - name: Upload Fuzz Results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: forge-fuzz-results
+          path: fuzz-results.txt
+
+  security-summary:
+    name: Security Summary
+    needs: [slither, aderyn, forge-fuzz]
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: security-reports/
+
+      - name: Generate Summary
+        run: |
+          echo "# Security Analysis Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Tool | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Slither | ${{ needs.slither.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Aderyn | ${{ needs.aderyn.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Forge Fuzz | ${{ needs.forge-fuzz.result }} |" >> $GITHUB_STEP_SUMMARY

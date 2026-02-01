@@ -1,0 +1,17 @@
+// SPDX-License-Identifier: BSD-3-Clause
+// Copyright (c) 2025 Lux Industries Inc.
+pragma solidity ^0.8.31;
+
+import "@luxfi/bridge/LRC20B.sol";
+
+contract ZooREDO is LRC20B {
+    constructor() LRC20B("Zoo Resistance Dog", "ZREDO") {}
+
+    function mint(address account, uint256 amount) public onlyAdmin {
+        _mint(account, amount);
+    }
+
+    function burn(address account, uint256 amount) public onlyAdmin {
+        _burn(account, amount);
+    }
+}
