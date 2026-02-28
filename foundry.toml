@@ -29,6 +29,11 @@ number_underscore = "thousands"
 quote_style = "double"
 single_line_statement_blocks = "preserve"
 
+[rpc_endpoints]
+zoo_mainnet = "http://127.0.0.1:29630/ext/bc/FGanBWHZEetE7yXqGxKeUWHjDxmuKYpQ6sGdHJnrDNqQ8AoP7/rpc"
+zoo_testnet = "http://127.0.0.1:29640/ext/bc/vEw2TquNRZm5ckng8fJi9JGuKiuTdQA81YNZC3A1jeYhDRH5V/rpc"
+zoo_devnet = "http://127.0.0.1:29650/ext/bc/2dNppzzx7WC1cagAzVRjVP4Qf5n9BRLgVsd2L6BwDbocAVVqBz/rpc"
+
 [doc]
 out = "docs"
 repository = "https://github.com/luxfi/zoo"
